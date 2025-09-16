@@ -1,11 +1,14 @@
-from flask import Flask, render_template_string, redirect, url_for
-from database import AttendanceDB
-from datetime import datetime
-import pandas as pd
+# นำเข้าไลบรารีที่จำเป็น
+from flask import Flask, render_template_string, redirect, url_for  # สำหรับสร้างเว็บแอพพลิเคชั่น
+from database import AttendanceDB  # สำหรับจัดการฐานข้อมูล
+from datetime import datetime  # สำหรับจัดการวันที่และเวลา
+import pandas as pd  # สำหรับจัดการข้อมูล
 
+# สร้าง Flask application
 app = Flask(__name__)
-db = AttendanceDB()
+db = AttendanceDB()  # สร้างอินสแตนซ์ของฐานข้อมูล
 
+# เทมเพลต HTML สำหรับหน้าเว็บ
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
@@ -134,6 +137,11 @@ HTML_TEMPLATE = '''
 '''
 
 def convert_to_thai_date(date_str):
+    """
+    แปลงวันที่เป็นรูปแบบภาษาไทย
+    - รับวันที่ในรูปแบบ YYYY-MM-DD
+    - แปลงเป็นวันที่ภาษาไทย เช่น 1 มกราคม 2567
+    """
     thai_months = [
         "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
         "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
@@ -143,27 +151,35 @@ def convert_to_thai_date(date_str):
 
 @app.route('/')
 def index():
-    # Get all students
+    """
+    หน้าหลักของเว็บแอพพลิเคชั่น
+    - แสดงรายชื่อนักศึกษาทั้งหมด
+    - แสดงสถานะการเข้าเรียนวันนี้
+    - แสดงประวัติการเช็คชื่อ 7 วันล่าสุด
+    """
+    # ดึงข้อมูลนักศึกษาทั้งหมด
     students = db.get_all_students()
     
-    # Get today's attendance
+    # ดึงข้อมูลการเข้าเรียนวันนี้
     today = datetime.now().date()
     today_str = today.strftime('%Y-%m-%d')
-    attendance_records = db.get_recent_attendance(7)  # Get last 7 days
+    attendance_records = db.get_recent_attendance(7)  # ดึงข้อมูล 7 วันล่าสุด
     
-    # Process student data
+    # ประมวลผลข้อมูลนักศึกษา
     student_list = []
     for student in students:
+        # ตรวจสอบการเข้าเรียนวันนี้
         attended_today = any(
             record['student_id'] == student['id'] and 
             record['date'] == today_str 
             for record in attendance_records
         )
         
-        # Get last attendance
+        # ดึงเวลาเข้าเรียนล่าสุด
         student_records = [r for r in attendance_records if r['student_id'] == student['id']]
         last_attendance = student_records[0]['time'] if student_records else None
         
+        # สร้างข้อมูลสำหรับแสดงผล
         student_list.append({
             'id': student['id'],
             'name': student['name'],
@@ -172,8 +188,10 @@ def index():
             'last_attendance': last_attendance
         })
     
+    # นับจำนวนผู้เข้าเรียนวันนี้
     today_count = len([s for s in student_list if s['attended_today']])
     
+    # แสดงผลหน้าเว็บ
     return render_template_string(
         HTML_TEMPLATE,
         students=student_list,
@@ -185,8 +203,13 @@ def index():
 
 @app.route('/clear')
 def clear_attendance():
+    """
+    ลบข้อมูลการเช็คชื่อทั้งหมด
+    - ล้างข้อมูลในตาราง attendance
+    - กลับไปยังหน้าหลัก
+    """
     db.delete_all_attendance()
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000)  # เริ่มต้นเซิร์ฟเวอร์ที่พอร์ต 5000

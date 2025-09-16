@@ -1,17 +1,14 @@
-# Import libraries ที่จำเป็น
-import cv2  # สำหรับการประมวลผลภาพ
-import pickle  # สำหรับบันทึกและโหลดข้อมูล
-import sqlite3  # สำหรับจัดการฐานข้อมูล
-from datetime import datetime  # สำหรับจัดการวันที่และเวลา
-import numpy as np  # สำหรับการคำนวณทางคณิตศาสตร์
-import os  # สำหรับจัดการไฟล์และโฟลเดอร์
+# นำเข้าไลบรารีที่จำเป็นสำหรับระบบ
+import cv2          # ใช้สำหรับการประมวลผลภาพและการจดจำใบหน้า
+import pickle       # ใช้สำหรับบันทึกและโหลดข้อมูล mapping
+import sqlite3      # ใช้สำหรับจัดการฐานข้อมูล
+from datetime import datetime  # ใช้จัดการวันที่และเวลา
+import numpy as np  # ใช้สำหรับการคำนวณทางคณิตศาสตร์
+import os          # ใช้จัดการไฟล์และโฟลเดอร์
 
+# ฟังก์ชันสำหรับเชื่อมต่อและสร้างฐานข้อมูล
 def init_database():
-    """
-    สร้างและเชื่อมต่อฐานข้อมูล SQLite
-    - สร้างตาราง attendance ถ้ายังไม่มี
-    - เก็บข้อมูล student_id, date, time
-    """
+    """สร้างและเชื่อมต่อฐานข้อมูล SQLite สำหรับเก็บประวัติการเข้าเรียน"""
     conn = sqlite3.connect('attendance.db')
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS attendance
@@ -19,12 +16,9 @@ def init_database():
     conn.commit()
     return conn
 
+# ฟังก์ชันบันทึกการเข้าเรียน
 def record_attendance(conn, student_id):
-    """
-    บันทึกการเข้าเรียนลงในฐานข้อมูล
-    - ตรวจสอบว่าได้บันทึกไปแล้วหรือยังในวันนี้
-    - บันทึกเวลาที่เช็คชื่อ
-    """
+    """บันทึกการเข้าเรียนของนักศึกษาลงในฐานข้อมูล พร้อมตรวจสอบการซ้ำ"""
     current_date = datetime.now().date()
     current_time = datetime.now().strftime('%H:%M:%S')  # แปลงเวลาเป็น string
     
@@ -41,13 +35,13 @@ def record_attendance(conn, student_id):
         conn.commit()
         print(f"Recorded attendance for {student_id}")
 
+# ฟังก์ชันโหลดและเทรนโมเดล
 def load_known_faces(dataset_path):
     """
-    โหลดและเทรนโมเดลจากรูปภาพในโฟลเดอร์ dataset
-    - สร้าง LBPH Face Recognizer
-    - โหลดรูปภาพแต่ละคนและตรวจจับใบหน้า
-    - สร้าง mapping ระหว่าง ID กับ index
-    - เทรนโมเดลและบันทึกไฟล์
+    โหลดและเทรนโมเดลจากรูปในโฟลเดอร์ dataset
+    - ตรวจจับใบหน้าจากรูปภาพ
+    - เทรนโมเดล LBPH
+    - สร้างและบันทึก mapping ระหว่าง ID กับ label
     """
     recognizer = cv2.face.LBPHFaceRecognizer_create()
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -102,12 +96,13 @@ def load_known_faces(dataset_path):
     print("Model trained and saved successfully")
     return recognizer
 
+# ฟังก์ชันตรวจสอบคุณภาพใบหน้า
 def check_face_quality(face_img):
     """
     ตรวจสอบคุณภาพของภาพใบหน้า
-    - ตรวจสอบความชัดของภาพด้วย Laplacian
-    - ตรวจสอบความสว่างของภาพ
-    - คืนค่า True ถ้าผ่านเกณฑ์
+    - วัดความชัดด้วย Laplacian
+    - ตรวจสอบความสว่าง
+    - ตรวจสอบความสมดุลของแสง
     """
     # ตรวจสอบความชัดของภาพ
     laplacian_var = cv2.Laplacian(face_img, cv2.CV_64F).var()
@@ -115,12 +110,13 @@ def check_face_quality(face_img):
     brightness = face_img.mean()
     return laplacian_var > 100 and 50 < brightness < 200
 
+# ฟังก์ชันปรับปรุงคุณภาพภาพ
 def enhance_face_image(face_img):
     """
     ปรับปรุงคุณภาพของภาพใบหน้า
     - ปรับความคมชัดด้วย CLAHE
-    - ลดสัญญาณรบกวนด้วย Non-local Means Denoising
-    - คืนค่าภาพที่ปรับปรุงแล้ว
+    - ลดสัญญาณรบกวน
+    - เพิ่มความชัดของภาพ
     """
     # ปรับความคมชัด
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
@@ -129,13 +125,13 @@ def enhance_face_image(face_img):
     denoised = cv2.fastNlMeansDenoising(enhanced)
     return denoised
 
+# ฟังก์ชันหลักสำหรับการรู้จำใบหน้า
 def recognize_faces():
     """
-    ฟังก์ชันหลักสำหรับการรู้จำใบหน้าแบบ Real-time
-    - โหลดหรือเทรนโมเดลใหม่
-    - เปิดกล้องและเริ่มการตรวจจับใบหน้า
-    - ทำการรู้จำใบหน้าและแสดงผล
-    - บันทึกการเข้าเรียนเมื่อตรวจจับได้
+    ทำการรู้จำใบหน้าแบบ Real-time
+    - เปิดกล้องและรับภาพ
+    - ตรวจจับและรู้จำใบหน้า
+    - แสดงผลและบันทึกการเข้าเรียน
     """
     # Load face detector and recognizer
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -283,11 +279,12 @@ def recognize_faces():
     cv2.destroyAllWindows()
     conn.close()
 
+# ฟังก์ชันค้นหาประวัติ
 def search_attendance_history(student_id=None, date=None):
     """
     ค้นหาประวัติการเข้าเรียน
-    - ค้นหาตาม student_id และ/หรือ วันที่
-    - เรียงลำดับตามวันที่และเวลาล่าสุด
+    - ค้นหาตาม ID หรือวันที่
+    - แสดงผลแบบเรียงลำดับตามเวลา
     """
     conn = sqlite3.connect('attendance.db')
     c = conn.cursor()
@@ -309,12 +306,12 @@ def search_attendance_history(student_id=None, date=None):
     conn.close()
     return results
 
+# ฟังก์ชันแสดงเมนูค้นหา
 def display_attendance_menu():
     """
-    แสดงเมนูสำหรับการค้นหาประวัติการเข้าเรียน
-    - ค้นหาตาม ID
-    - ค้นหาตามวันที่
-    - แสดงทั้งหมด
+    แสดงเมนูสำหรับค้นหาประวัติ
+    - มีตัวเลือกค้นหาหลายรูปแบบ
+    - แสดงผลในรูปแบบตาราง
     """
     while True:
         print("\nAttendance History Search")
@@ -353,11 +350,13 @@ def display_attendance_menu():
         else:
             print("No records found!")
 
+# ฟังก์ชันหลัก
 def main():
     """
-    ฟังก์ชันหลักของโปรแกรม
-    - แสดงเมนูหลัก
-    - จัดการการทำงานของระบบ
+    เมนูหลักของโปรแกรม
+    - เริ่มการรู้จำใบหน้า
+    - ค้นหาประวัติ
+    - ออกจากโปรแกรม
     """
     while True:
         print("\nFace Recognition Attendance System")
@@ -377,6 +376,7 @@ def main():
         else:
             print("Invalid choice!")
 
+# จุดเริ่มต้นโปรแกรม
 if __name__ == "__main__":
-    main()
+    main()  # เรียกใช้ฟังก์ชันหลัก
     main()

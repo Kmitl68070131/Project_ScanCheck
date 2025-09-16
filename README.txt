@@ -84,3 +84,8 @@ PROJECT-TEST/
   └── attendance.db      (ฐานข้อมูลการเช็คชื่อ)
   ├── encodings.pickle   (ไฟล์ฐานข้อมูลใบหน้า)
   └── attendance.db      (ฐานข้อมูลการเช็คชื่อ)
+  6. เปิดเว็บ
+    -รัน python web_app.py
+
+7. ลบข้อมูล
+    -รัน python delete_student.py
